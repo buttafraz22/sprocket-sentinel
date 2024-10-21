@@ -1,4 +1,4 @@
-./comp
-./lexer
+./comp.exe
+./lexer.exe
 lexer-parser.cpp
 .vscode/

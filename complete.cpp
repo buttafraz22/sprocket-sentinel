@@ -4,6 +4,7 @@
 #include<cctype>
 #include<map>
 #include<fstream>
+#include<map>
 using namespace std;
 
 enum TokenType { 
@@ -52,6 +53,10 @@ string tokenTypeToString(TokenType type) {
         case T_EOF: return "eof";
         default: return "UNKNOWN_TOKEN";
     }
+}
+
+bool isTypeCompatible(TokenType varType, TokenType valueType) {
+    return varType == valueType;
 }
 
 struct Token {
@@ -208,6 +213,7 @@ class Parser {
     private:
         vector<Token> tokens;
         size_t pos;
+        map<string, TokenType> symbolTable;
 
         void parseStatement() {
             if (tokens[pos].type == T_INT || tokens[pos].type == T_STR || tokens[pos].type == T_DBL) {
@@ -249,36 +255,86 @@ class Parser {
         }
 
         
-        void parseDeclaration() {            
-            if (tokens[pos].type == T_INT || tokens[pos].type == T_STR || tokens[pos].type == T_DBL) {
-                TokenType type = tokens[pos].type;
-                pos++;   
+        void parseDeclaration() {
+            TokenType type = tokens[pos].type;
+            pos++;  // consume type token
 
-                expect(T_ID);   
+            string variableName = tokens[pos].value;
+            expect(T_ID);
 
-                if (tokens[pos].type == T_ASSIGN) {
-                    pos++;   
-                    if (type == T_INT) {
-                        expect(T_NUM);   
-                    } 
-                    else if (type == T_DBL) {
-                        expect(T_DOUBLE_VAL);
-                    }
-                    else {
-                        expect(T_STRING);   
-                    }
+            // Add variable to symbol table
+            symbolTable[variableName] = type;
+
+            if (tokens[pos].type == T_ASSIGN) {
+                pos++;  // consume assign token
+                TokenType valueType;
+                if (type == T_INT) {
+                    expect(T_NUM);
+                    valueType = T_INT;
+                } 
+                else if (type == T_DBL) {
+                    expect(T_DOUBLE_VAL);
+                    valueType = T_DBL;
                 }
-                expect(T_SEMICOLON);   
+                else if (type == T_STR) {
+                    expect(T_STRING);
+                    valueType = T_STR;
+                }
+                
+                // Type checking
+                if (type != valueType) {
+                    cout << "Type Error: Cannot assign " << tokenTypeToString(valueType) 
+                        << " to " << tokenTypeToString(type) << " on Line: " << tokens[pos-1].line << endl;
+                    exit(1);
+                }
             }
+            expect(T_SEMICOLON);
         }
 
         void parseAssignment() {
-            expect(T_ID);  
+            string variableName = tokens[pos].value;
+            expect(T_ID);
+            
+            // Check if variable exists in symbol table
+            if (symbolTable.find(variableName) == symbolTable.end()) {
+                cout << "Error: Undeclared variable '" << variableName << "' on Line: " << tokens[pos-1].line << endl;
+                exit(1);
+            }
+
             expect(T_ASSIGN);
-            if (tokens[pos].type == T_ID)   parseExpression();
-            else if (tokens[pos].type == T_NUM) expect(T_NUM);
-            else if(tokens[pos].type == T_DOUBLE_VAL) expect(T_DOUBLE_VAL);
-            else if(tokens[pos].type == T_STRING) expect(T_STRING); 
+            
+            TokenType expectedType = symbolTable[variableName];
+            TokenType actualType;
+
+            if (tokens[pos].type == T_ID) {
+                string rhsVarName = tokens[pos].value;
+                if (symbolTable.find(rhsVarName) == symbolTable.end()) {
+                    cout << "Error: Undeclared variable '" << rhsVarName << "' on Line: " << tokens[pos].line << endl;
+                    exit(1);
+                }
+                actualType = symbolTable[rhsVarName];
+                parseExpression();
+            } else if (tokens[pos].type == T_NUM) {
+                actualType = T_INT;
+                expect(T_NUM);
+            } else if (tokens[pos].type == T_DOUBLE_VAL) {
+                actualType = T_DBL;
+                expect(T_DOUBLE_VAL);
+            } else if (tokens[pos].type == T_STRING) {
+                actualType = T_STR;
+                expect(T_STRING);
+            } else {
+                cout << "Syntax Error: Unexpected token in assignment on Line: " << tokens[pos].line << endl;
+                exit(1);
+            }
+
+            // Type checking
+            if (expectedType != actualType) {
+                cout << "Type Error: Cannot assign " << tokenTypeToString(actualType) 
+                    << " to " << tokenTypeToString(expectedType) << " on Line: " << tokens[pos-1].line << endl;
+                exit(1);
+            }
+
             expect(T_SEMICOLON);
         }
 
