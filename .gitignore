@@ -1,0 +1,4 @@
+./comp
+./lexer
+lexer-parser.cpp
+.vscode/
