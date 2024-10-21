@@ -9,8 +9,8 @@ using namespace std;
 
 enum TokenType { 
     T_INT, T_STR, T_ID, T_DBL, T_DOUBLE_VAL,
-    T_NUM, T_STRING, T_IF, T_ELSE, T_RETURN, T_WHILE, T_FUNC,
-    T_ASSIGN, T_PLUS, T_MINUS, T_MUL, T_DIV,
+    T_NUM, T_STRING, T_IF, T_ELSE, T_RETURN, T_FUNC,
+    T_ASSIGN, T_PLUS, T_MINUS, T_MUL, T_DIV, T_WHILE, T_FOR,
     T_LPAREN, T_RPAREN, T_LBRACE, T_RBRACE,
     T_SEMICOLON, T_COMMA,
     T_GT, T_LT, T_GTE, T_LTE, T_EQ, T_NEQ, T_AND, T_OR, 
@@ -36,6 +36,7 @@ string tokenTypeToString(TokenType type) {
         case T_MINUS: return "-";
         case T_MUL: return "*";
         case T_DIV: return "/";
+        case T_FOR: return "for ";
         case T_LPAREN: return "(";
         case T_RPAREN: return ")";
         case T_LBRACE: return "{";
@@ -145,6 +146,7 @@ class Lexer {
                     else if (word == "dbl") tokens.emplace_back(T_DBL, word, line);
                     else if (word == "function") tokens.emplace_back(T_FUNC, word, line);
                     else if (word == "dbl") tokens.emplace_back(T_DBL, word, line);
+                    else if (word == "jabtk") tokens.emplace_back(T_FOR, word, line);// for loop has construct jabtk
                     else tokens.emplace_back(T_ID, word, line);
                     continue;
                 }
@@ -224,6 +226,8 @@ class Parser {
                 parseIfStatement();
             } else if (tokens[pos].type == T_WHILE) {
                 parseWhileLoop();
+            } else if(tokens[pos].type == T_FOR) {
+                parseForLoop();
             } else if (tokens[pos].type == T_RETURN) {
                 parseReturnStatement();
             } else if (tokens[pos].type == T_FUNC) {
@@ -240,7 +244,7 @@ class Parser {
         void expect(TokenType type) {
             if (tokens[pos].type != type) {
                 cout << "Syntax Error: expected -> " << tokenTypeToString(type) << " but found: "
-                     << tokenTypeToString(tokens[pos].type) << " on Line: " << tokens[pos].line << endl;
+                     << tokenTypeToString(tokens[pos].type) << " on Line: " << tokens[pos].line << "."<< endl;
                 exit(1);
             }
             pos++;
@@ -262,7 +266,6 @@ class Parser {
             string variableName = tokens[pos].value;
             expect(T_ID);
 
-            // Add variable to symbol table
             symbolTable[variableName] = type;
 
             if (tokens[pos].type == T_ASSIGN) {
@@ -303,8 +306,8 @@ class Parser {
 
             expect(T_ASSIGN);
             
-            TokenType expectedType = symbolTable[variableName];
-            TokenType actualType;
+            TokenType actualType = symbolTable[variableName];
+            TokenType expectedType;
 
             if (tokens[pos].type == T_ID) {
                 string rhsVarName = tokens[pos].value;
@@ -312,16 +315,16 @@ class Parser {
                     cout << "Error: Undeclared variable '" << rhsVarName << "' on Line: " << tokens[pos].line << endl;
                     exit(1);
                 }
-                actualType = symbolTable[rhsVarName];
+                expectedType = symbolTable[rhsVarName];
                 parseExpression();
             } else if (tokens[pos].type == T_NUM) {
-                actualType = T_INT;
+                expectedType = T_INT;
                 expect(T_NUM);
             } else if (tokens[pos].type == T_DOUBLE_VAL) {
-                actualType = T_DBL;
+                expectedType = T_DBL;
                 expect(T_DOUBLE_VAL);
             } else if (tokens[pos].type == T_STRING) {
-                actualType = T_STR;
+                expectedType = T_STR;
                 expect(T_STRING);
             } else {
                 cout << "Syntax Error: Unexpected token in assignment on Line: " << tokens[pos].line << endl;
@@ -358,6 +361,17 @@ class Parser {
             expect(T_RETURN);
             parseExpression();
             expect(T_SEMICOLON);
+        }
+
+        void parseForLoop(){
+            expect(T_FOR);
+            expect(T_LPAREN);
+            parseDeclaration();
+            parseExpression();
+            expect(T_SEMICOLON);
+            parseAssignment();
+            expect(T_RPAREN);
+            parseBlock();
         }
 
         void parseFunction() {
@@ -444,7 +458,7 @@ int main(int argc, char* argv[]) {
 
     string fileName = argv[1];
     if (fileName.substr(fileName.find_last_of(".") + 1) != "afz") {
-        cerr << "Error: File" << argv[1] <<" must have a .afz extension" << endl;
+        cerr << "Error: File " << argv[1] <<" must have a .afz extension" << endl;
         return 1;
     }
 
