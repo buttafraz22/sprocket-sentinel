@@ -7,19 +7,24 @@ a=1;
 str abc;
 abc = "ali";
 
+# This is testing comments.
+
 if(a != b) {
     a = a + 1;
+} else {
+    b = b + 1;
 }
+
 vibe add(int a, str b) {
     a = a + 1;
 }
 
 yap "This is sus";
 
-while(b<=a) {
+til(b<=a) {
     b = b + 1;
 }
 
-jabtk(int x=0; x < 10; x = x+1;) {
-    a = x < 5;
+fore(int i=0; i < 10; i = i+1;) {
+    a = i < 5;
 }

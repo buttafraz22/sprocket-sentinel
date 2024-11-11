@@ -82,9 +82,6 @@ class Lexer {
             this->line = 1;
         }
         string consumeNumber() {
-            /*
-                Consume decimal and integers from the code.
-            */
             size_t start = pos;
             bool hasDecimal = false;
 
@@ -100,18 +97,12 @@ class Lexer {
         }
 
         string consumeWord() {
-            /*
-                Consume AlphaNumeric words from the code.
-            */
             size_t start = pos;
             while (pos < src.size() && isalnum(src[pos])) pos++;
             return src.substr(start, pos - start);
         }
 
         string consumeString() {
-            /*
-                Consume string literals. Literals are the words that start & end with "".
-            */
             pos++;  
             size_t start = pos;
             while (pos < src.size() && src[pos] != '"') pos++;
@@ -241,9 +232,19 @@ class Lexer {
 
 class Parser {
     private:
+        struct SymbolTableEntry {
+            TokenType varType;
+            bool isAssigned;  // Track if the variable has been assigned a value
+            
+            SymbolTableEntry() : varType(T_EOF), isAssigned(false) {}
+
+            SymbolTableEntry(TokenType type) 
+                : varType(type), isAssigned(false) {}
+        };
+
         vector<Token> tokens;
         size_t pos;
-        map<string, TokenType> symbolTable;
+        map<string, SymbolTableEntry> symbolTable;  // Updated symbol table
 
         void parseStatement() {
             /*
@@ -330,11 +331,13 @@ class Parser {
             string variableName = tokens[pos].value;
             expect(T_ID);
 
-            symbolTable[variableName] = type;
+            // Initialize the symbol table entry with the type and not assigned
+            symbolTable[variableName] = SymbolTableEntry(type);
 
             if (tokens[pos].type == T_ASSIGN) {
                 pos++;  // consume assign token
                 TokenType valueType;
+                
                 if (type == T_INT) {
                     expect(T_NUM);
                     valueType = T_INT;
@@ -351,9 +354,12 @@ class Parser {
                 // Type checking
                 if (type != valueType) {
                     cout << "Type Error: Cannot assign " << tokenTypeToString(valueType) 
-                        << " to " << tokenTypeToString(type) << " on Line: " << tokens[pos-1].line << endl;
+                         << " to " << tokenTypeToString(type) << " on Line: " << tokens[pos-1].line << endl;
                     exit(1);
                 }
+
+                // Mark the variable as assigned
+                symbolTable[variableName].isAssigned = true;
             }
             expect(T_SEMICOLON);
         }
@@ -366,23 +372,38 @@ class Parser {
             expect(T_ID);
             
             // Check if variable exists in symbol table
-            if (symbolTable.find(variableName) == symbolTable.end()) {
+            auto symbolIt = symbolTable.find(variableName);
+            if (symbolIt == symbolTable.end()) {
                 cout << "Error: Undeclared variable '" << variableName << "' on Line: " << tokens[pos-1].line << endl;
+                exit(1);
+            }
+
+            // Check for immutability violation
+            if (symbolIt->second.isAssigned) {
+                cout << "Error: Cannot reassign immutable variable '" << variableName 
+                     << "' on Line: " << tokens[pos-1].line << endl;
                 exit(1);
             }
 
             expect(T_ASSIGN);
             
-            TokenType actualType = symbolTable[variableName];
+            TokenType actualType = symbolIt->second.varType;
             TokenType expectedType;
 
             if (tokens[pos].type == T_ID) {
                 string rhsVarName = tokens[pos].value;
-                if (symbolTable.find(rhsVarName) == symbolTable.end()) {
+                auto rhsSymbolIt = symbolTable.find(rhsVarName);
+                if (rhsSymbolIt == symbolTable.end()) {
                     cout << "Error: Undeclared variable '" << rhsVarName << "' on Line: " << tokens[pos].line << endl;
                     exit(1);
                 }
-                expectedType = symbolTable[rhsVarName];
+                // Check if the RHS variable has been assigned a value
+                if (!rhsSymbolIt->second.isAssigned) {
+                    cout << "Error: Use of uninitialized variable '" << rhsVarName 
+                         << "' on Line: " << tokens[pos].line << endl;
+                    exit(1);
+                }
+                expectedType = rhsSymbolIt->second.varType;
                 parseExpression();
             } else if (tokens[pos].type == T_NUM) {
                 expectedType = T_INT;
@@ -400,11 +421,13 @@ class Parser {
 
             // Type checking
             if (expectedType != actualType) {
-                cout << "Type Error: Cannot assign " << tokenTypeToString(actualType) 
-                    << " to " << tokenTypeToString(expectedType) << " on Line: " << tokens[pos-1].line << endl;
+                cout << "Type Error: Cannot assign " << tokenTypeToString(expectedType) 
+                     << " to " << tokenTypeToString(actualType) << " on Line: " << tokens[pos-1].line << endl;
                 exit(1);
             }
 
+            // Mark the variable as assigned after successful type checking
+            symbolIt->second.isAssigned = true;
             expect(T_SEMICOLON);
         }
 
@@ -489,6 +512,18 @@ class Parser {
                 be recursively expressions.
             */
             if (tokens[pos].type == T_ID) {
+                string varName = tokens[pos].value;
+                auto symbolIt = symbolTable.find(varName);
+                if (symbolIt == symbolTable.end()) {
+                    cout << "Error: Undeclared variable '" << varName << "' on Line: " << tokens[pos].line << endl;
+                    exit(1);
+                }
+                // Check if the variable has been assigned a value before use
+                if (!symbolIt->second.isAssigned) {
+                    cout << "Error: Use of uninitialized variable '" << varName 
+                         << "' on Line: " << tokens[pos].line << endl;
+                    exit(1);
+                }
                 expect(T_ID);
             } else if (tokens[pos].type == T_NUM) {
                 expect(T_NUM);
@@ -501,19 +536,16 @@ class Parser {
                 exit(1);
             }
 
-            // Check for relational or logical operators
             while (tokens[pos].type == T_GT || tokens[pos].type == T_LT || tokens[pos].type == T_GTE ||
-                tokens[pos].type == T_LTE || tokens[pos].type == T_EQ || tokens[pos].type == T_NEQ ||
-                tokens[pos].type == T_AND || tokens[pos].type == T_OR || tokens[pos].type == T_PLUS || 
-                tokens[pos].type == T_MINUS || tokens[pos].type == T_MUL || tokens[pos].type == T_DIV) {
+                   tokens[pos].type == T_LTE || tokens[pos].type == T_EQ || tokens[pos].type == T_NEQ ||
+                   tokens[pos].type == T_AND || tokens[pos].type == T_OR || tokens[pos].type == T_PLUS || 
+                   tokens[pos].type == T_MINUS || tokens[pos].type == T_MUL || tokens[pos].type == T_DIV) {
                 
-                TokenType op = tokens[pos].type; // Store the operator
                 pos++;  // Consume the operator
                 
-                // Parse the next operand after the operator
                 if (tokens[pos].type == T_ID || tokens[pos].type == T_NUM || 
                     tokens[pos].type == T_DOUBLE_VAL || tokens[pos].type == T_STRING) {
-                    parseExpression(); // Recursively parse the next part of the expression
+                    parseExpression();
                 } else {
                     cout << "Syntax Error: Expected operand after operator on line: " << tokens[pos].line << endl;
                     exit(1);
