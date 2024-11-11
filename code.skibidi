@@ -10,9 +10,11 @@ abc = "ali";
 if(a != b) {
     a = a + 1;
 }
-function add(int a, str b) {
+vibe add(int a, str b) {
     a = a + 1;
 }
+
+yap "This is sus";
 
 while(b<=a) {
     b = b + 1;

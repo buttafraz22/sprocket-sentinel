@@ -12,7 +12,7 @@ enum TokenType {
     T_NUM, T_STRING, T_IF, T_ELSE, T_RETURN, T_FUNC,
     T_ASSIGN, T_PLUS, T_MINUS, T_MUL, T_DIV, T_WHILE, T_FOR,
     T_LPAREN, T_RPAREN, T_LBRACE, T_RBRACE,
-    T_SEMICOLON, T_COMMA,
+    T_SEMICOLON, T_COMMA, T_PRINT,
     T_GT, T_LT, T_GTE, T_LTE, T_EQ, T_NEQ, T_AND, T_OR, 
     T_EOF
 };
@@ -42,6 +42,7 @@ string tokenTypeToString(TokenType type) {
         case T_LBRACE: return "{";
         case T_RBRACE: return "}";
         case T_COMMA: return ",";
+        case T_PRINT: return "print";
         case T_SEMICOLON: return ";";
         case T_GT: return ">";
         case T_LT: return "<";
@@ -141,12 +142,13 @@ class Lexer {
                     else if (word == "str") tokens.emplace_back(T_STR, word, line);
                     else if (word == "if") tokens.emplace_back(T_IF, word, line);
                     else if (word == "else") tokens.emplace_back(T_ELSE, word, line);
-                    else if (word == "return") tokens.emplace_back(T_RETURN, word, line);
+                    else if (word == "sending") tokens.emplace_back(T_RETURN, word, line);
                     else if (word == "while") tokens.emplace_back(T_WHILE, word, line);
                     else if (word == "dbl") tokens.emplace_back(T_DBL, word, line);
-                    else if (word == "function") tokens.emplace_back(T_FUNC, word, line);
+                    else if (word == "vibe") tokens.emplace_back(T_FUNC, word, line);
                     else if (word == "dbl") tokens.emplace_back(T_DBL, word, line);
                     else if (word == "jabtk") tokens.emplace_back(T_FOR, word, line);// for loop has construct jabtk
+                    else if (word == "yap") tokens.emplace_back(T_PRINT, word, line); // print statement
                     else tokens.emplace_back(T_ID, word, line);
                     continue;
                 }
@@ -234,13 +236,21 @@ class Parser {
                 parseFunction();
             } else if (tokens[pos].type == T_LBRACE) {
                 parseBlock();
-            } else {
+            } else if (tokens[pos].type == T_PRINT) {
+                parsePrintStatement();
+            }else {
                 cout << "Syntax error: Unexpected token: " << tokens[pos].value
                     << " on line: "<< tokens[pos].line << endl;
                     exit(1);
             }
         }
 
+        void parsePrintStatement() {
+            // yap "something" ;
+            expect(T_PRINT);
+            expect(T_STRING);
+            expect(T_SEMICOLON);
+        }
         void expect(TokenType type) {
             if (tokens[pos].type != type) {
                 cout << "Syntax Error: expected -> " << tokenTypeToString(type) << " but found: "
@@ -457,8 +467,8 @@ int main(int argc, char* argv[]) {
     }
 
     string fileName = argv[1];
-    if (fileName.substr(fileName.find_last_of(".") + 1) != "afz") {
-        cerr << "Error: File " << argv[1] <<" must have a .afz extension" << endl;
+    if (fileName.substr(fileName.find_last_of(".") + 1) != "skibidi") {
+        cerr << "Error: File " << argv[1] <<" must have a .skibidi extension" << endl;
         return 1;
     }
 
