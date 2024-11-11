@@ -22,10 +22,10 @@ g++ -o complete complete.cpp
 
 
 
-Run the provided sample code.afz by:
+Run the provided sample code.skibidi by:
 
 `````bash
-./complete code.afz
+./complete code.skibidi
 `````
 
 
