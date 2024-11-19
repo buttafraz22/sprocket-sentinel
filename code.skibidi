@@ -9,10 +9,10 @@ abc = "ali";
 
 # This is testing comments.
 
-if(a != b) {
+if(a != 1) {
     a = a + 1;
 } else {
-    b = b + 1;
+    a = a + 2;
 }
 
 vibe add(int a, str b) {
@@ -21,8 +21,8 @@ vibe add(int a, str b) {
 
 yap "This is sus";
 
-til(b<=a) {
-    b = b + 1;
+til(5>=a) {
+    a = a + 1;
 }
 
 fore(int i=0; i < 10; i = i+1;) {

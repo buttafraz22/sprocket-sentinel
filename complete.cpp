@@ -276,9 +276,6 @@ class Parser {
             }
         }
 
-
-
-
         void expect(TokenType type) {
             /*
                 The expect function is the main parser for the code. An approach for parsing is 
@@ -330,6 +327,14 @@ class Parser {
             string variableName = tokens[pos].value;
             expect(T_ID);
 
+            // check if the variable exists in the symbol table or not. 
+            // REDECLARATION OF THE SAME VARIABLE IS PROHIBITED.
+            if (symbolTable.find(variableName) != symbolTable.end()) {
+                cout << "Error: Variable '" << variableName << "' redeclared on Line: " 
+                    << tokens[pos-1].line << ". Previously declared as "
+                    << tokenTypeToString(symbolTable[variableName]) << "." << endl;
+                exit(1);
+            }
             symbolTable[variableName] = type;
 
             if (tokens[pos].type == T_ASSIGN) {

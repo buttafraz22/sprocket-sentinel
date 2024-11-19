@@ -82,6 +82,9 @@ class Lexer {
             this->line = 1;
         }
         string consumeNumber() {
+            /*
+                Consume decimal and integers from the code.
+            */
             size_t start = pos;
             bool hasDecimal = false;
 
@@ -97,12 +100,18 @@ class Lexer {
         }
 
         string consumeWord() {
+            /*
+                Consume AlphaNumeric words from the code.
+            */
             size_t start = pos;
             while (pos < src.size() && isalnum(src[pos])) pos++;
             return src.substr(start, pos - start);
         }
 
         string consumeString() {
+            /*
+                Consume string literals. Literals are the words that start & end with "".
+            */
             pos++;  
             size_t start = pos;
             while (pos < src.size() && src[pos] != '"') pos++;
@@ -230,21 +239,134 @@ class Lexer {
         }
 };
 
+enum TACOp {
+    TAC_ADD, TAC_SUB, TAC_MUL, TAC_DIV,
+    TAC_ASSIGN, TAC_LABEL, TAC_GOTO,
+    TAC_IF_EQ, TAC_IF_NEQ, TAC_IF_LT, TAC_IF_GT, TAC_IF_LTE, TAC_IF_GTE,
+    TAC_PARAM, TAC_CALL, TAC_RETURN,
+    TAC_PRINT
+};
+
+struct TACInstruction {
+    TACOp op;
+    string result;
+    string arg1;
+    string arg2;
+    
+    TACInstruction(TACOp op, string result, string arg1 = "", string arg2 = "")
+        : op(op), result(result), arg1(arg1), arg2(arg2) {}
+        
+    string toString() const {
+        switch(op) {
+            case TAC_ADD:
+                return result + " = " + arg1 + " + " + arg2;
+            case TAC_SUB:
+                return result + " = " + arg1 + " - " + arg2;
+            case TAC_MUL:
+                return result + " = " + arg1 + " * " + arg2;
+            case TAC_DIV:
+                return result + " = " + arg1 + " / " + arg2;
+            case TAC_ASSIGN:
+                return result + " = " + arg1;
+            case TAC_LABEL:
+                return result + ":";
+            case TAC_GOTO:
+                return "goto " + result;
+            case TAC_IF_EQ:
+                return "if " + arg1 + " == " + arg2 + " goto " + result;
+            case TAC_IF_NEQ:
+                return "if " + arg1 + " != " + arg2 + " goto " + result;
+            case TAC_IF_LT:
+                return "if " + arg1 + " < " + arg2 + " goto " + result;
+            case TAC_IF_GT:
+                return "if " + arg1 + " > " + arg2 + " goto " + result;
+            case TAC_IF_LTE:
+                return "if " + arg1 + " <= " + arg2 + " goto " + result;
+            case TAC_IF_GTE:
+                return "if " + arg1 + " >= " + arg2 + " goto " + result;
+            case TAC_PARAM:
+                return "param " + result;
+            case TAC_CALL:
+                return result + " = call " + arg1;
+            case TAC_RETURN:
+                return "return " + result;
+            case TAC_PRINT:
+                return "print " + result;
+            default:
+                return "unknown instruction";
+        }
+    }
+};
+
+class TACGenerator {
+private:
+    vector<TACInstruction> instructions;
+    int tempCount = 0;
+    int labelCount = 0;
+    
+    string newTemp() {
+        return "t" + to_string(tempCount++);
+    }
+    
+    string newLabel() {
+        return "L" + to_string(labelCount++);
+    }
+
+public:
+    string generateTemp() {
+        return newTemp();
+    }
+    
+    string generateLabel() {
+        return newLabel();
+    }
+    
+    void addInstruction(const TACInstruction& inst) {
+        instructions.push_back(inst);
+    }
+    
+    void printInstructions() {
+        cout << "\nGenerated Three Address Code:\n";
+        for(size_t i = 0; i < instructions.size(); i++) {
+            cout << i << ": " << instructions[i].toString() << endl;
+        }
+    }
+    
+    // Helper methods for common operations
+    string generateBinaryOp(TACOp op, const string& arg1, const string& arg2) {
+        string temp = newTemp();
+        instructions.push_back(TACInstruction(op, temp, arg1, arg2));
+        return temp;
+    }
+    
+    void generateAssignment(const string& target, const string& value) {
+        instructions.push_back(TACInstruction(TAC_ASSIGN, target, value));
+    }
+    
+    void generateIfGoto(TACOp condition, const string& arg1, const string& arg2, const string& label) {
+        instructions.push_back(TACInstruction(condition, label, arg1, arg2));
+    }
+    
+    void generateGoto(const string& label) {
+        instructions.push_back(TACInstruction(TAC_GOTO, label));
+    }
+    
+    void generateLabel(const string& label) {
+        instructions.push_back(TACInstruction(TAC_LABEL, label));
+    }
+    
+    void generatePrint(const string& value) {
+        instructions.push_back(TACInstruction(TAC_PRINT, value));
+    }
+};
+
 class Parser {
     private:
-        struct SymbolTableEntry {
-            TokenType varType;
-            bool isAssigned;  // Track if the variable has been assigned a value
-            
-            SymbolTableEntry() : varType(T_EOF), isAssigned(false) {}
-
-            SymbolTableEntry(TokenType type) 
-                : varType(type), isAssigned(false) {}
-        };
-
         vector<Token> tokens;
         size_t pos;
-        map<string, SymbolTableEntry> symbolTable;  // Updated symbol table
+        map<string, TokenType> symbolTable;
+        TACGenerator tacGen;
+
 
         void parseStatement() {
             /*
@@ -277,9 +399,6 @@ class Parser {
             }
         }
 
-
-
-
         void expect(TokenType type) {
             /*
                 The expect function is the main parser for the code. An approach for parsing is 
@@ -298,8 +417,11 @@ class Parser {
         void parsePrintStatement() {
             // yap "something" ;
             expect(T_PRINT);
+            string value = tokens[pos].value;
             expect(T_STRING);
+            tacGen.generatePrint("\"" + value + "\"");
             expect(T_SEMICOLON);
+
         }
 
         void parseBlock() {
@@ -331,13 +453,19 @@ class Parser {
             string variableName = tokens[pos].value;
             expect(T_ID);
 
-            // Initialize the symbol table entry with the type and not assigned
-            symbolTable[variableName] = SymbolTableEntry(type);
+            // check if the variable exists in the symbol table or not. 
+            // REDECLARATION OF THE SAME VARIABLE IS PROHIBITED.
+            if (symbolTable.find(variableName) != symbolTable.end()) {
+                cout << "Error: Variable '" << variableName << "' redeclared on Line: " 
+                    << tokens[pos-1].line << ". Previously declared as "
+                    << tokenTypeToString(symbolTable[variableName]) << "." << endl;
+                exit(1);
+            }
+            symbolTable[variableName] = type;
 
             if (tokens[pos].type == T_ASSIGN) {
                 pos++;  // consume assign token
                 TokenType valueType;
-                
                 if (type == T_INT) {
                     expect(T_NUM);
                     valueType = T_INT;
@@ -350,16 +478,17 @@ class Parser {
                     expect(T_STRING);
                     valueType = T_STR;
                 }
+
+                pos--;
                 
                 // Type checking
                 if (type != valueType) {
                     cout << "Type Error: Cannot assign " << tokenTypeToString(valueType) 
-                         << " to " << tokenTypeToString(type) << " on Line: " << tokens[pos-1].line << endl;
+                        << " to " << tokenTypeToString(type) << " on Line: " << tokens[pos-1].line << endl;
                     exit(1);
                 }
-
-                // Mark the variable as assigned
-                symbolTable[variableName].isAssigned = true;
+                string expression= parseExpression();
+                tacGen.generateAssignment(variableName, expression);
             }
             expect(T_SEMICOLON);
         }
@@ -371,64 +500,19 @@ class Parser {
             string variableName = tokens[pos].value;
             expect(T_ID);
             
-            // Check if variable exists in symbol table
-            auto symbolIt = symbolTable.find(variableName);
-            if (symbolIt == symbolTable.end()) {
-                cout << "Error: Undeclared variable '" << variableName << "' on Line: " << tokens[pos-1].line << endl;
+            if (symbolTable.find(variableName) == symbolTable.end()) {
+                cout << "Error: Undeclared variable '" << variableName << "' on Line: " 
+                    << tokens[pos-1].line << endl;
                 exit(1);
             }
-
-            // Check for immutability violation
-            if (symbolIt->second.isAssigned) {
-                cout << "Error: Cannot reassign immutable variable '" << variableName 
-                     << "' on Line: " << tokens[pos-1].line << endl;
-                exit(1);
-            }
-
+            
             expect(T_ASSIGN);
             
-            TokenType actualType = symbolIt->second.varType;
-            TokenType expectedType;
-
-            if (tokens[pos].type == T_ID) {
-                string rhsVarName = tokens[pos].value;
-                auto rhsSymbolIt = symbolTable.find(rhsVarName);
-                if (rhsSymbolIt == symbolTable.end()) {
-                    cout << "Error: Undeclared variable '" << rhsVarName << "' on Line: " << tokens[pos].line << endl;
-                    exit(1);
-                }
-                // Check if the RHS variable has been assigned a value
-                if (!rhsSymbolIt->second.isAssigned) {
-                    cout << "Error: Use of uninitialized variable '" << rhsVarName 
-                         << "' on Line: " << tokens[pos].line << endl;
-                    exit(1);
-                }
-                expectedType = rhsSymbolIt->second.varType;
-                parseExpression();
-            } else if (tokens[pos].type == T_NUM) {
-                expectedType = T_INT;
-                expect(T_NUM);
-            } else if (tokens[pos].type == T_DOUBLE_VAL) {
-                expectedType = T_DBL;
-                expect(T_DOUBLE_VAL);
-            } else if (tokens[pos].type == T_STRING) {
-                expectedType = T_STR;
-                expect(T_STRING);
-            } else {
-                cout << "Syntax Error: Unexpected token in assignment on Line: " << tokens[pos].line << endl;
-                exit(1);
-            }
-
-            // Type checking
-            if (expectedType != actualType) {
-                cout << "Type Error: Cannot assign " << tokenTypeToString(expectedType) 
-                     << " to " << tokenTypeToString(actualType) << " on Line: " << tokens[pos-1].line << endl;
-                exit(1);
-            }
-
-            // Mark the variable as assigned after successful type checking
-            symbolIt->second.isAssigned = true;
+            string exprResult = parseExpression();
+            tacGen.generateAssignment(variableName, exprResult);
+            
             expect(T_SEMICOLON);
+
         }
 
         void parseIfStatement() {
@@ -438,15 +522,25 @@ class Parser {
             */
             expect(T_IF);
             expect(T_LPAREN);
-            parseExpression();
+            
+            string condition = parseExpression();
+            string elseLabel = tacGen.generateLabel();
+            string endLabel = tacGen.generateLabel();
+            
             expect(T_RPAREN);
+            
+            tacGen.generateIfGoto(TAC_IF_EQ, condition, "false", elseLabel);
+            
             parseBlock();
-            if (tokens[pos].type == T_ELSE)
-            {
+            tacGen.generateGoto(endLabel);
+            
+            tacGen.generateLabel(elseLabel);
+            if (tokens[pos].type == T_ELSE) {
                 expect(T_ELSE);
                 parseBlock();
             }
-
+            
+            tacGen.generateLabel(endLabel);
         }
 
         void parseWhileLoop() {
@@ -454,10 +548,22 @@ class Parser {
                 while(condition) Block
             */
             expect(T_WHILE);
+        
+            string startLabel = tacGen.generateLabel();
+            string endLabel = tacGen.generateLabel();
+            
+            tacGen.generateLabel(startLabel);
+            
             expect(T_LPAREN);
-            parseExpression();
+            string condition = parseExpression();
             expect(T_RPAREN);
+            
+            tacGen.generateIfGoto(TAC_IF_EQ, condition, "false", endLabel);
+            
             parseStatement();
+            tacGen.generateGoto(startLabel);
+            tacGen.generateLabel(endLabel);
+
         }
 
         void parseReturnStatement() {
@@ -506,51 +612,62 @@ class Parser {
             parseBlock();
         }
 
-        void parseExpression() {
+        string parseExpression() {
             /*
                 This can be arithmetic, or boolean expression. Expressions can
                 be recursively expressions.
             */
+            string result;
+        
             if (tokens[pos].type == T_ID) {
-                string varName = tokens[pos].value;
-                auto symbolIt = symbolTable.find(varName);
-                if (symbolIt == symbolTable.end()) {
-                    cout << "Error: Undeclared variable '" << varName << "' on Line: " << tokens[pos].line << endl;
-                    exit(1);
-                }
-                // Check if the variable has been assigned a value before use
-                if (!symbolIt->second.isAssigned) {
-                    cout << "Error: Use of uninitialized variable '" << varName 
-                         << "' on Line: " << tokens[pos].line << endl;
-                    exit(1);
-                }
+                result = tokens[pos].value;
                 expect(T_ID);
             } else if (tokens[pos].type == T_NUM) {
+                result = tokens[pos].value;
                 expect(T_NUM);
-            } else if (tokens[pos].type == T_STRING) {
-                expect(T_STRING);
             } else if (tokens[pos].type == T_DOUBLE_VAL) {
+                result = tokens[pos].value;
                 expect(T_DOUBLE_VAL);
-            } else {
-                cout << "Syntax Error: Unexpected token in expression on line: " << tokens[pos].line << endl;
-                exit(1);
+            } else if (tokens[pos].type == T_STRING) {
+                result = "\"" + tokens[pos].value + "\"";
+                expect(T_STRING);
             }
-
+            
             while (tokens[pos].type == T_GT || tokens[pos].type == T_LT || tokens[pos].type == T_GTE ||
-                   tokens[pos].type == T_LTE || tokens[pos].type == T_EQ || tokens[pos].type == T_NEQ ||
-                   tokens[pos].type == T_AND || tokens[pos].type == T_OR || tokens[pos].type == T_PLUS || 
-                   tokens[pos].type == T_MINUS || tokens[pos].type == T_MUL || tokens[pos].type == T_DIV) {
+                tokens[pos].type == T_LTE || tokens[pos].type == T_EQ || tokens[pos].type == T_NEQ ||
+                tokens[pos].type == T_AND || tokens[pos].type == T_OR || tokens[pos].type == T_PLUS || 
+                tokens[pos].type == T_MINUS || tokens[pos].type == T_MUL || tokens[pos].type == T_DIV) {
+                TokenType op = tokens[pos].type;
+                pos++; // consume operator
                 
-                pos++;  // Consume the operator
-                
+                string nextOperand;
                 if (tokens[pos].type == T_ID || tokens[pos].type == T_NUM || 
                     tokens[pos].type == T_DOUBLE_VAL || tokens[pos].type == T_STRING) {
+                    nextOperand = tokens[pos].value;
                     parseExpression();
-                } else {
-                    cout << "Syntax Error: Expected operand after operator on line: " << tokens[pos].line << endl;
-                    exit(1);
                 }
+                
+                // Generate TAC for the operation
+                TACOp tacOp;
+                switch(op) {
+                    case T_PLUS: tacOp = TAC_ADD; break;
+                    case T_MINUS: tacOp = TAC_SUB; break;
+                    case T_MUL: tacOp = TAC_MUL; break;
+                    case T_DIV: tacOp = TAC_DIV; break;
+                    case T_LTE: tacOp = TAC_IF_LTE; break;
+                    case T_GTE: tacOp= TAC_IF_GTE; break;
+                    case T_NEQ: tacOp= TAC_IF_NEQ; break;
+                    case T_GT: tacOp= TAC_IF_GT; break;
+                    case T_LT: tacOp = TAC_IF_LT; break;
+                    case T_EQ: tacOp = TAC_IF_EQ; break;
+                    default: tacOp = TAC_ADD; // shouldn't happen
+                }
+                
+                result = tacGen.generateBinaryOp(tacOp, result, nextOperand);
             }
+            
+            return result;
+
         }
 
 
@@ -565,6 +682,7 @@ class Parser {
             while (tokens[pos].type != T_EOF) {
                 parseStatement();
             }
+            tacGen.printInstructions();
         }
 };
 
