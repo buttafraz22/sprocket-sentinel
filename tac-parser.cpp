@@ -259,15 +259,15 @@ struct TACInstruction {
     string toString() const {
         switch(op) {
             case TAC_ADD:
-                return result + " = " + arg1 + " + " + arg2;
+                return result + " :=  " + arg1 + " + " + arg2;
             case TAC_SUB:
-                return result + " = " + arg1 + " - " + arg2;
+                return result + " := " + arg1 + " - " + arg2;
             case TAC_MUL:
-                return result + " = " + arg1 + " * " + arg2;
+                return result + " := " + arg1 + " * " + arg2;
             case TAC_DIV:
-                return result + " = " + arg1 + " / " + arg2;
+                return result + " := " + arg1 + " / " + arg2;
             case TAC_ASSIGN:
-                return result + " = " + arg1;
+                return result + " := " + arg1;
             case TAC_LABEL:
                 return result + ":";
             case TAC_GOTO:
@@ -357,6 +357,31 @@ public:
     
     void generatePrint(const string& value) {
         instructions.push_back(TACInstruction(TAC_PRINT, value));
+    }
+
+    string generateComparison(TACOp op, const string& arg1, const string& arg2) {
+        string temp = newTemp();
+        switch(op) {
+            case TAC_IF_EQ:
+                instructions.push_back(TACInstruction(TAC_ASSIGN, temp, arg1 + " == " + arg2));
+                break;
+            case TAC_IF_NEQ:
+                instructions.push_back(TACInstruction(TAC_ASSIGN, temp, arg1 + " != " + arg2));
+                break;
+            case TAC_IF_LT:
+                instructions.push_back(TACInstruction(TAC_ASSIGN, temp, arg1 + " < " + arg2));
+                break;
+            case TAC_IF_GT:
+                instructions.push_back(TACInstruction(TAC_ASSIGN, temp, arg1 + " > " + arg2));
+                break;
+            case TAC_IF_LTE:
+                instructions.push_back(TACInstruction(TAC_ASSIGN, temp, arg1 + " <= " + arg2));
+                break;
+            case TAC_IF_GTE:
+                instructions.push_back(TACInstruction(TAC_ASSIGN, temp, arg1 + " >= " + arg2));
+                break;
+        }
+        return temp;
     }
 };
 
@@ -466,29 +491,33 @@ class Parser {
             if (tokens[pos].type == T_ASSIGN) {
                 pos++;  // consume assign token
                 TokenType valueType;
+                string expressionValue;
+                
                 if (type == T_INT) {
                     expect(T_NUM);
                     valueType = T_INT;
+                    expressionValue = tokens[pos-1].value;
                 } 
                 else if (type == T_DBL) {
                     expect(T_DOUBLE_VAL);
                     valueType = T_DBL;
+                    expressionValue = tokens[pos-1].value;
                 }
                 else if (type == T_STR) {
                     expect(T_STRING);
                     valueType = T_STR;
+                    expressionValue = "\"" + tokens[pos-1].value + "\"";
                 }
 
-                pos--;
-                
                 // Type checking
-                if (type != valueType) {
+                if (!isTypeCompatible(type, valueType)) {
                     cout << "Type Error: Cannot assign " << tokenTypeToString(valueType) 
                         << " to " << tokenTypeToString(type) << " on Line: " << tokens[pos-1].line << endl;
                     exit(1);
                 }
-                string expression= parseExpression();
-                tacGen.generateAssignment(variableName, expression);
+
+                // Generate TAC instruction for simple declaration and assignment
+                tacGen.generateAssignment(variableName, expressionValue);
             }
             expect(T_SEMICOLON);
         }
@@ -516,30 +545,27 @@ class Parser {
         }
 
         void parseIfStatement() {
-            /*
-                if(condition) Block.
-                else Block.
-            */
             expect(T_IF);
             expect(T_LPAREN);
-            
-            string condition = parseExpression();
+
+            string condition = parseExpression();  // This will now return the temp variable holding comparison result
             string elseLabel = tacGen.generateLabel();
             string endLabel = tacGen.generateLabel();
-            
+
             expect(T_RPAREN);
-            
+
+            // Generate the conditional jump using the comparison result
             tacGen.generateIfGoto(TAC_IF_EQ, condition, "false", elseLabel);
-            
+
             parseBlock();
             tacGen.generateGoto(endLabel);
-            
+
             tacGen.generateLabel(elseLabel);
             if (tokens[pos].type == T_ELSE) {
                 expect(T_ELSE);
                 parseBlock();
             }
-            
+
             tacGen.generateLabel(endLabel);
         }
 
@@ -618,7 +644,7 @@ class Parser {
                 be recursively expressions.
             */
             string result;
-        
+
             if (tokens[pos].type == T_ID) {
                 result = tokens[pos].value;
                 expect(T_ID);
@@ -632,45 +658,54 @@ class Parser {
                 result = "\"" + tokens[pos].value + "\"";
                 expect(T_STRING);
             }
-            
-            while (tokens[pos].type == T_GT || tokens[pos].type == T_LT || tokens[pos].type == T_GTE ||
-                tokens[pos].type == T_LTE || tokens[pos].type == T_EQ || tokens[pos].type == T_NEQ ||
-                tokens[pos].type == T_AND || tokens[pos].type == T_OR || tokens[pos].type == T_PLUS || 
-                tokens[pos].type == T_MINUS || tokens[pos].type == T_MUL || tokens[pos].type == T_DIV) {
+
+            while (pos < tokens.size() && (tokens[pos].type == T_GT || tokens[pos].type == T_LT || 
+                tokens[pos].type == T_GTE || tokens[pos].type == T_LTE || tokens[pos].type == T_EQ || 
+                tokens[pos].type == T_NEQ || tokens[pos].type == T_AND || tokens[pos].type == T_OR || 
+                tokens[pos].type == T_PLUS || tokens[pos].type == T_MINUS || tokens[pos].type == T_MUL || 
+                tokens[pos].type == T_DIV)) {
+                
                 TokenType op = tokens[pos].type;
                 pos++; // consume operator
-                
+
                 string nextOperand;
                 if (tokens[pos].type == T_ID || tokens[pos].type == T_NUM || 
                     tokens[pos].type == T_DOUBLE_VAL || tokens[pos].type == T_STRING) {
                     nextOperand = tokens[pos].value;
-                    parseExpression();
+                    pos++; // consume the operand
                 }
-                
-                // Generate TAC for the operation
-                TACOp tacOp;
-                switch(op) {
-                    case T_PLUS: tacOp = TAC_ADD; break;
-                    case T_MINUS: tacOp = TAC_SUB; break;
-                    case T_MUL: tacOp = TAC_MUL; break;
-                    case T_DIV: tacOp = TAC_DIV; break;
-                    case T_LTE: tacOp = TAC_IF_LTE; break;
-                    case T_GTE: tacOp= TAC_IF_GTE; break;
-                    case T_NEQ: tacOp= TAC_IF_NEQ; break;
-                    case T_GT: tacOp= TAC_IF_GT; break;
-                    case T_LT: tacOp = TAC_IF_LT; break;
-                    case T_EQ: tacOp = TAC_IF_EQ; break;
-                    default: tacOp = TAC_ADD; // shouldn't happen
+
+                // Handle comparison operators
+                if (op == T_GT || op == T_LT || op == T_GTE || op == T_LTE || 
+                    op == T_EQ || op == T_NEQ) {
+                    TACOp tacOp;
+                    switch(op) {
+                        case T_LTE: tacOp = TAC_IF_LTE; break;
+                        case T_GTE: tacOp = TAC_IF_GTE; break;
+                        case T_NEQ: tacOp = TAC_IF_NEQ; break;
+                        case T_GT: tacOp = TAC_IF_GT; break;
+                        case T_LT: tacOp = TAC_IF_LT; break;
+                        case T_EQ: tacOp = TAC_IF_EQ; break;
+                        default: tacOp = TAC_IF_EQ;
+                    }
+                    result = tacGen.generateComparison(tacOp, result, nextOperand);
                 }
-                
-                result = tacGen.generateBinaryOp(tacOp, result, nextOperand);
+                // Handle arithmetic operators
+                else {
+                    TACOp tacOp;
+                    switch(op) {
+                        case T_PLUS: tacOp = TAC_ADD; break;
+                        case T_MINUS: tacOp = TAC_SUB; break;
+                        case T_MUL: tacOp = TAC_MUL; break;
+                        case T_DIV: tacOp = TAC_DIV; break;
+                        default: tacOp = TAC_ADD;
+                    }
+                    result = tacGen.generateBinaryOp(tacOp, result, nextOperand);
+                }
             }
-            
+
             return result;
-
         }
-
-
 
     public:
         Parser(const vector<Token>& tokens) {
