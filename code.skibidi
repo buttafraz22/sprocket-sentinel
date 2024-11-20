@@ -28,3 +28,5 @@ til(5>=a) {
 fore(int i=0; i < 10; i = i+1;) {
     a = i < 5;
 }
+
+yap a;

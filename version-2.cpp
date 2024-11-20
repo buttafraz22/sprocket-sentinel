@@ -440,13 +440,38 @@ class Parser {
 
 
         void parsePrintStatement() {
-            // yap "something" ;
+            /*
+                yap "something"
+            */
             expect(T_PRINT);
-            string value = tokens[pos].value;
-            expect(T_STRING);
-            tacGen.generatePrint("\"" + value + "\"");
+            
+            // Handle different types of print values
+            string value;
+            TokenType type;
+            
+            if (tokens[pos].type == T_STRING) {
+                value = tokens[pos].value;
+                type = T_STRING;
+                expect(T_STRING);
+            } else if (tokens[pos].type == T_ID) {
+                value = tokens[pos].value;
+                type = symbolTable[value];  // Get type from symbol table
+                expect(T_ID);
+            } else if (tokens[pos].type == T_NUM) {
+                value = tokens[pos].value;
+                type = T_NUM;
+                expect(T_NUM);
+            } else if (tokens[pos].type == T_DOUBLE_VAL) {
+                value = tokens[pos].value;
+                type = T_DOUBLE_VAL;
+                expect(T_DOUBLE_VAL);
+            } else {
+                cout << "Error: Invalid print argument on line " << tokens[pos].line << endl;
+                exit(1);
+            }
+            
+            tacGen.generatePrint(value);
             expect(T_SEMICOLON);
-
         }
 
         void parseBlock() {
@@ -545,6 +570,9 @@ class Parser {
         }
 
         void parseIfStatement() {
+            /*
+                if(condition) block
+            */
             expect(T_IF);
             expect(T_LPAREN);
 
