@@ -3,4 +3,7 @@
 lexer-parser.cpp
 .vscode/
 
+*.exe
+*.o
+
 token.txt

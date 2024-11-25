@@ -9,67 +9,59 @@ main:
     mov r10, r9
     mov r8, 1
     mov rdi, rsi
-section .data
-    fmt_int: db '%d', 10, 0
-section .text
-    mov rsi, rdx
-    mov rdi, fmt_int
-    xor eax, eax
-    call printf
-    mov rcx, rbx
-    mov rax, rcx
-    cmp rax, rax
+    mov rdx, rcx
+    mov rax, rdx
+    cmp rax, rbx
     je L0
     mov rax, r8
-    add rax, qword [rbp-16]
-    mov qword [rbp-8], rax
-    mov r8, qword [rbp-8]
+    add rax, qword [rbp-8]
+    mov r8, rax
     jmp L1
 L0:
     mov rax, r8
-    add rax, qword [rbp-32]
-    mov qword [rbp-24], rax
-    mov r8, qword [rbp-24]
+    add rax, qword [rbp-24]
+    mov qword [rbp-16], rax
+    mov r8, qword [rbp-16]
 L1:
-    mov rsi, r8
-    mov rdi, fmt_int
+section .data
+    fmt_str: db '%s', 10, 0
+    str: db 'Afraz', 0     ; Format message for string
+section .text
+    mov rdi, fmt_str
+    mov rsi, str
     xor eax, eax
     call printf
 L2:
-    mov rax, qword [rbp-48]
-    mov qword [rbp-40], rax
     mov rax, qword [rbp-40]
-    cmp rax, rax
+    mov qword [rbp-32], rax
+    mov rax, qword [rbp-32]
+    cmp rax, rbx
     je L3
     mov rax, r8
-    add rax, qword [rbp-16]
-    mov qword [rbp-56], rax
-    mov r8, qword [rbp-56]
+    add rax, qword [rbp-8]
+    mov qword [rbp-48], rax
+    mov r8, qword [rbp-48]
     jmp L2
 L3:
     mov rax, 0
-    mov qword [rbp-64], rax
+    mov qword [rbp-56], rax
 L4:
-    mov rax, qword [rbp-80]
-    mov qword [rbp-72], rax
     mov rax, qword [rbp-72]
-    cmp rax, rax
-    je L5
-    mov rax, qword [rbp-96]
-    mov qword [rbp-88], rax
-    mov r8, qword [rbp-88]
-L6:
-    mov rax, qword [rbp-64]
-    add rax, qword [rbp-16]
-    mov qword [rbp-104], rax
-    mov rax, qword [rbp-104]
     mov qword [rbp-64], rax
+    mov rax, qword [rbp-64]
+    cmp rax, rbx
+    je L5
+    mov rax, qword [rbp-88]
+    mov qword [rbp-80], rax
+    mov r8, qword [rbp-80]
+L6:
+    mov rax, qword [rbp-56]
+    add rax, qword [rbp-8]
+    mov qword [rbp-96], rax
+    mov rax, qword [rbp-96]
+    mov qword [rbp-56], rax
     jmp L4
 L5:
-    mov rsi, r8
-    mov rdi, fmt_int
-    xor eax, eax
-    call printf
     xor eax, eax
     leave
     ret

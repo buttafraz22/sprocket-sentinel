@@ -17,7 +17,7 @@ git clone https://github.com/buttafraz22/sprocket-sentinel/
 Next, compile the complete.cpp file by:
 
 ``````bash
-g++ -o complete complete.cpp
+g++ -o comp version-3.cpp
 ``````
 
 
@@ -26,6 +26,7 @@ Run the provided sample code.skibidi by:
 
 `````bash
 ./complete code.skibidi
+./code
 `````
 
 

@@ -9,15 +9,12 @@ abc = "ali";
 
 # This is testing comments.
 
-yap "Afraz";
-
 if(a != 1) {
     a = a + 1;
 } else {
     a = a + 2;
 }
-yap a;
-
+yap "Afraz";
 
 til(5>=a) {
     a = a + 1;
@@ -26,5 +23,3 @@ til(5>=a) {
 fore(int i=0; i < 10; i = i+1;) {
     a = i < 5;
 }
-
-yap a;

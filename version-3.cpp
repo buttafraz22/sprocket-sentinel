@@ -949,21 +949,21 @@ public:
             }
             case TAC_PRINT: {
                 static bool format_added = false;
+
                 if (!format_added) {
                     assembly.push_back("section .data");
-                    assembly.push_back("    fmt_int: db '%d', 10, 0");
+                    assembly.push_back("    fmt_str: db '%s', 10, 0");  // Changed to %s
+                    assembly.push_back("    str: db '" + tac.result + "', 0     ; Format message for string");  // Added a label for the string
                     assembly.push_back("section .text");
                     format_added = true;
                 }
-                string src = ensureOperandFormat(allocateVar(tac.result));
-                if (src.find("[") != string::npos) {
-                    assembly.push_back("    mov rsi, " + src);  // Load from memory to register
-                } else {
-                    assembly.push_back("    mov rsi, " + src);
-                }
-                assembly.push_back("    mov rdi, fmt_int");
+
+                assembly.push_back("    mov rdi, fmt_str");
+                assembly.push_back("    mov rsi, str");  // Load the address of the string
                 assembly.push_back("    xor eax, eax");
                 assembly.push_back("    call printf");
+
+
                 break;
             }
             case TAC_LABEL:
