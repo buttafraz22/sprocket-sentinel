@@ -2,6 +2,7 @@
 #include<vector>
 #include<string>
 #include<cctype>
+#include<algorithm>
 #include<map>
 #include<fstream>
 #include<map>
@@ -313,6 +314,9 @@ private:
     }
 
 public:
+    vector<TACInstruction> getInstructions() {
+        return instructions;
+    }
     string generateTemp() {
         return newTemp();
     }
@@ -782,13 +786,331 @@ class Parser {
             this->pos = 0;
         }
 
-        void parse() {
+        vector<TACInstruction> parse() {
             while (tokens[pos].type != T_EOF) {
                 parseStatement();
             }
-            tacGen.printInstructions();
+            return tacGen.getInstructions();
         }
 };
+
+// Assembly Generator class for x86_64
+class AssemblyGenerator {
+private:
+    vector<string> assembly;
+    map<string, string> varToReg;
+    map<string, int> varToStack;
+    int stackOffset = 0;
+    int labelCount = 0;
+    vector<string> availableRegs = {"rax", "rbx", "rcx", "rdx", "rsi", "rdi", "r8", "r9", "r10", "r11"};
+
+    string getNextReg() {
+        if (!availableRegs.empty()) {
+            string reg = availableRegs.back();
+            availableRegs.pop_back();
+            return reg;
+        }
+        // If no registers available, allocate stack space
+        stackOffset += 8;
+        return "qword [rbp-" + to_string(stackOffset) + "]";  // Added qword specifier
+    }
+
+    void freeReg(const string& reg) {
+        if (reg.find("[") == string::npos) {
+            availableRegs.push_back(reg);
+        }
+    }
+
+    string allocateVar(const string& var) {
+        if (varToReg.find(var) == varToReg.end()) {
+            string location = getNextReg();
+            varToReg[var] = location;
+        }
+        return varToReg[var];
+    }
+
+    // Helper to ensure proper operand format
+    string ensureOperandFormat(const string& operand) {
+        if (operand.find("[") != string::npos && operand.find("qword") == string::npos) {
+            return "qword " + operand;
+        }
+        return operand;
+    }
+
+    void saveRegisters() {
+        for (const auto& reg : {"rax", "rcx", "rdx", "rsi", "rdi", "r8", "r9", "r10", "r11"}) {
+            assembly.push_back("    push " + string(reg));
+        }
+    }
+
+    void restoreRegisters() {
+        vector<string> regs = {"r11", "r10", "r9", "r8", "rdi", "rsi", "rdx", "rcx", "rax"};
+        for (const auto& reg : regs) {
+            assembly.push_back("    pop " + reg);
+        }
+    }
+
+public:
+    void generateProlog() {
+        assembly.push_back("global main");
+        assembly.push_back("extern printf");
+        assembly.push_back("section .text");
+        assembly.push_back("main:");
+        assembly.push_back("    push rbp");
+        assembly.push_back("    mov rbp, rsp");
+        assembly.push_back("    sub rsp, 208  ; Reserve stack space");
+    }
+
+    void generateEpilog() {
+        assembly.push_back("    xor eax, eax");  // Changed to use 32-bit register for clarity
+        assembly.push_back("    leave");
+        assembly.push_back("    ret");
+    }
+
+    void generateFromTAC(const TACInstruction& tac) {
+        switch (tac.op) {
+            case TAC_ADD: {
+                string dest = allocateVar(tac.result);
+                string src1 = allocateVar(tac.arg1);
+                string src2 = allocateVar(tac.arg2);
+                
+                // Ensure proper memory operand format
+                dest = ensureOperandFormat(dest);
+                src1 = ensureOperandFormat(src1);
+                src2 = ensureOperandFormat(src2);
+
+                if (dest.find("[") != string::npos) {
+                    // If destination is memory, need intermediate register
+                    assembly.push_back("    mov rax, " + src1);
+                    assembly.push_back("    add rax, " + src2);
+                    assembly.push_back("    mov " + dest + ", rax");
+                } else {
+                    assembly.push_back("    mov " + dest + ", " + src1);
+                    assembly.push_back("    add " + dest + ", " + src2);
+                }
+                break;
+            }
+            case TAC_SUB: {
+                string dest = ensureOperandFormat(allocateVar(tac.result));
+                string src1 = ensureOperandFormat(allocateVar(tac.arg1));
+                string src2 = ensureOperandFormat(allocateVar(tac.arg2));
+
+                if (dest.find("[") != string::npos) {
+                    assembly.push_back("    mov rax, " + src1);
+                    assembly.push_back("    sub rax, " + src2);
+                    assembly.push_back("    mov " + dest + ", rax");
+                } else {
+                    assembly.push_back("    mov " + dest + ", " + src1);
+                    assembly.push_back("    sub " + dest + ", " + src2);
+                }
+                break;
+            }
+            case TAC_MUL: {
+                string dest = ensureOperandFormat(allocateVar(tac.result));
+                string src1 = ensureOperandFormat(allocateVar(tac.arg1));
+                string src2 = ensureOperandFormat(allocateVar(tac.arg2));
+
+                assembly.push_back("    mov rax, " + src1);
+                assembly.push_back("    imul rax, " + src2);
+                assembly.push_back("    mov " + dest + ", rax");
+                break;
+            }
+            case TAC_DIV: {
+                string dest = ensureOperandFormat(allocateVar(tac.result));
+                string src1 = ensureOperandFormat(allocateVar(tac.arg1));
+                string src2 = ensureOperandFormat(allocateVar(tac.arg2));
+
+                assembly.push_back("    mov rax, " + src1);
+                assembly.push_back("    xor rdx, rdx");
+                assembly.push_back("    mov rcx, " + src2);  // Move divisor to register
+                assembly.push_back("    div rcx");  // div always uses register
+                assembly.push_back("    mov " + dest + ", rax");
+                break;
+            }
+            case TAC_ASSIGN: {
+                string dest = ensureOperandFormat(allocateVar(tac.result));
+                if (all_of(tac.arg1.begin(), tac.arg1.end(), ::isdigit)) {
+                    if (dest.find("[") != string::npos) {
+                        assembly.push_back("    mov rax, " + tac.arg1);
+                        assembly.push_back("    mov " + dest + ", rax");
+                    } else {
+                        assembly.push_back("    mov " + dest + ", " + tac.arg1);
+                    }
+                } else {
+                    string src = ensureOperandFormat(allocateVar(tac.arg1));
+                    if (dest.find("[") != string::npos && src.find("[") != string::npos) {
+                        assembly.push_back("    mov rax, " + src);
+                        assembly.push_back("    mov " + dest + ", rax");
+                    } else {
+                        assembly.push_back("    mov " + dest + ", " + src);
+                    }
+                }
+                break;
+            }
+            case TAC_PRINT: {
+                static bool format_added = false;
+                if (!format_added) {
+                    assembly.push_back("section .data");
+                    assembly.push_back("    fmt_int: db '%d', 10, 0");
+                    assembly.push_back("section .text");
+                    format_added = true;
+                }
+                string src = ensureOperandFormat(allocateVar(tac.result));
+                if (src.find("[") != string::npos) {
+                    assembly.push_back("    mov rsi, " + src);  // Load from memory to register
+                } else {
+                    assembly.push_back("    mov rsi, " + src);
+                }
+                assembly.push_back("    mov rdi, fmt_int");
+                assembly.push_back("    xor eax, eax");
+                assembly.push_back("    call printf");
+                break;
+            }
+            case TAC_LABEL:
+                assembly.push_back(tac.result + ":");
+                break;
+            case TAC_GOTO:
+                assembly.push_back("    jmp " + tac.result);
+                break;
+            case TAC_IF_EQ: {
+                string src1 = ensureOperandFormat(allocateVar(tac.arg1));
+                string src2 = ensureOperandFormat(allocateVar(tac.arg2));
+                assembly.push_back("    mov rax, " + src1);
+                assembly.push_back("    cmp rax, " + src2);
+                assembly.push_back("    je " + tac.result);
+                break;
+            }
+            case TAC_IF_NEQ: {
+                string src1 = ensureOperandFormat(allocateVar(tac.arg1));
+                string src2 = ensureOperandFormat(allocateVar(tac.arg2));
+                assembly.push_back("    mov rax, " + src1);
+                assembly.push_back("    cmp rax, " + src2);
+                assembly.push_back("    jne " + tac.result);
+                break;
+            }
+            case TAC_IF_LT: {
+                string src1 = ensureOperandFormat(allocateVar(tac.arg1));
+                string src2 = ensureOperandFormat(allocateVar(tac.arg2));
+                assembly.push_back("    mov rax, " + src1);
+                assembly.push_back("    cmp rax, " + src2);
+                assembly.push_back("    jl " + tac.result);
+                break;
+            }
+            case TAC_IF_GT: {
+                string src1 = ensureOperandFormat(allocateVar(tac.arg1));
+                string src2 = ensureOperandFormat(allocateVar(tac.arg2));
+                assembly.push_back("    mov rax, " + src1);
+                assembly.push_back("    cmp rax, " + src2);
+                assembly.push_back("    jg " + tac.result);
+                break;
+            }
+            case TAC_IF_LTE: {
+                string src1 = ensureOperandFormat(allocateVar(tac.arg1));
+                string src2 = ensureOperandFormat(allocateVar(tac.arg2));
+                assembly.push_back("    mov rax, " + src1);
+                assembly.push_back("    cmp rax, " + src2);
+                assembly.push_back("    jle " + tac.result);
+                break;
+            }
+            case TAC_IF_GTE: {
+                string src1 = ensureOperandFormat(allocateVar(tac.arg1));
+                string src2 = ensureOperandFormat(allocateVar(tac.arg2));
+                assembly.push_back("    mov rax, " + src1);
+                assembly.push_back("    cmp rax, " + src2);
+                assembly.push_back("    jge " + tac.result);
+                break;
+            }
+            case TAC_CALL: {
+                saveRegisters();  // Save registers before call
+                
+                // If there's a return value destination
+                if (!tac.result.empty()) {
+                    string dest = ensureOperandFormat(allocateVar(tac.result));
+                    assembly.push_back("    call " + tac.arg1);
+                    // Move return value (in rax) to destination
+                    if (dest.find("[") != string::npos) {
+                        assembly.push_back("    mov " + dest + ", rax");
+                    } else {
+                        assembly.push_back("    mov " + dest + ", rax");
+                    }
+                } else {
+                    assembly.push_back("    call " + tac.arg1);
+                }
+                
+                restoreRegisters();  // Restore registers after call
+                break;
+            }
+            case TAC_PARAM: {
+                // Parameter passing according to System V AMD64 ABI
+                // First 6 integer/pointer arguments go in: rdi, rsi, rdx, rcx, r8, r9
+                static const vector<string> paramRegs = {"rdi", "rsi", "rdx", "rcx", "r8", "r9"};
+                static int paramCount = 0;
+                
+                string src = ensureOperandFormat(allocateVar(tac.result));
+                
+                if (paramCount < paramRegs.size()) {
+                    // If parameter is in memory, load it to register first
+                    if (src.find("[") != string::npos) {
+                        assembly.push_back("    mov rax, " + src);
+                        assembly.push_back("    mov " + paramRegs[paramCount] + ", rax");
+                    } else {
+                        assembly.push_back("    mov " + paramRegs[paramCount] + ", " + src);
+                    }
+                } else {
+                    // For additional parameters, push them on stack in reverse order
+                    if (src.find("[") != string::npos) {
+                        assembly.push_back("    mov rax, " + src);
+                        assembly.push_back("    push rax");
+                    } else {
+                        assembly.push_back("    push " + src);
+                    }
+                }
+                paramCount++;
+                break;
+            }
+            case TAC_RETURN: {
+                if (!tac.result.empty()) {
+                    string src = ensureOperandFormat(allocateVar(tac.result));
+                    // If returning from memory location
+                    if (src.find("[") != string::npos) {
+                        assembly.push_back("    mov rax, " + src);
+                    } else {
+                        assembly.push_back("    mov rax, " + src);
+                    }
+                } else {
+                    assembly.push_back("    xor rax, rax");  // Return 0 by default
+                }
+                assembly.push_back("    leave");
+                assembly.push_back("    ret");
+                break;
+            }
+        }
+    }
+
+
+    void generateAssembly(const vector<TACInstruction>& tacInstructions) {
+        generateProlog();
+        for (const auto& tac : tacInstructions) {
+            generateFromTAC(tac);
+        }
+        generateEpilog();
+    }
+
+    void outputAssembly(const string& filename) {
+        ofstream outFile(filename + ".asm");
+        for (const auto& line : assembly) {
+            outFile << line << endl;
+        }
+        outFile.close();
+
+        string compileCmd = "nasm -f elf64 " + filename + ".asm -o " + filename + ".o";
+        string linkCmd = "gcc -no-pie " + filename + ".o -o " + filename;
+
+        system(compileCmd.c_str());
+        system(linkCmd.c_str());
+    }
+};
+
 
 string readFileFromSource(const string& fileName) {
     ifstream file(fileName);
@@ -819,6 +1141,10 @@ int main(int argc, char* argv[]) {
     Lexer lexer(input);
     Parser p(lexer.tokenize());
 
-    p.parse();
+    vector<TACInstruction> tacTokens = p.parse();
+    AssemblyGenerator asmGen;
+    asmGen.generateAssembly(tacTokens);
+    asmGen.outputAssembly(fileName.substr(0, fileName.find_last_of(".")));
+
     cout << "Code parsed successfully! You Hoo!!!" << endl;
 }
