@@ -15,10 +15,6 @@ if(a != 1) {
     a = a + 2;
 }
 
-vibe add(int a, str b) {
-    a = a + 1;
-}
-
 yap "This is sus";
 
 til(5>=a) {
