@@ -8,18 +8,18 @@ str abc;
 abc = "ali";
 
 # This is testing comments.
-
+yap "Parsing start";
 if(a != 1) {
     a = a + 1;
 } else {
     a = a + 2;
 }
-yap "Afraz";
 
-til(5>=a) {
+fore(int i=0; i < 10; i = i+1;) {
     a = a + 1;
 }
 
-fore(int i=0; i < 10; i = i+1;) {
-    a = i < 5;
-}
+#til(a<=5) {
+#   a = a + 1;
+# }
+yap "Afraz";
