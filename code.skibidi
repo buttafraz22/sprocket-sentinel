@@ -1,23 +1,23 @@
 int a;
 int b=1;
-dbl c=5.89;
+#dbl c=5.89;
 
-a=1;
+a=a+b;
 
-str abc;
-abc = "ali";
+#str abc;
+#abc = "ali";
 
 # This is testing comments.
-yap "Parsing start";
-if(a != 1) {
-    a = a + 1;
-} else {
-    a = a + 2;
-}
+#yap "Parsing start";
+#if(a != 1) {
+#    a = a + 1;
+#} else {
+#    a = a + 2;
+#}
 
-fore(int i=0; i < 10; i = i+1;) {
-    a = a + 1;
-}
+#fore(int i=0; i < 10; i = i+1;) {
+#    a = a + 1;
+#}
 
 #til(a<=5) {
 #   a = a + 1;
